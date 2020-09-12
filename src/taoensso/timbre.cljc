@@ -27,14 +27,11 @@
 
 (def default-timestamp-opts
   "Controls (:timestamp_ data)"
-
-  #?(:clj
+  #?(:cljs {:pattern  "yy-MM-dd HH:mm:ss" #_:iso8601}
+     :clj
      {:pattern  :iso8601     #_"yy-MM-dd HH:mm:ss"
       :locale   :jvm-default #_(java.util.Locale. "en")
-      :timezone :utc         #_(java.util.TimeZone/getTimeZone "Europe/Amsterdam")}
-
-     :cljs
-     {:pattern  "yy-MM-dd HH:mm:ss" #_:iso8601}))
+      :timezone :utc         #_(java.util.TimeZone/getTimeZone "Europe/Amsterdam")}))
 
 (declare stacktrace)
 (defn default-output-fn
@@ -63,27 +60,123 @@
 #?(:cljs (def println-appender core-appenders/println-appender))
 #?(:cljs (def console-appender core-appenders/console-appender))
 
-(def example-config
-  "Example (+default) Timbre v4 config map.
+(def default-config
+  "Default/example Timbre `*config*` value:
 
-  APPENDERS
-    An appender is a map with keys:
-      :min-level       ; Level keyword, or nil (=> no minimum level)
-      :enabled?        ;
-      :async?          ; Dispatch using agent? Useful for slow appenders (clj only)
-      :rate-limit      ; [[ncalls-limit window-ms] <...>], or nil
-      :output-fn       ; Optional override for inherited (fn [data]) -> string
-      :timestamp-opts  ; Optional override for inherited {:pattern _ :locale _ :timezone _}
-      :ns-whitelist    ; Optional, stacks with active config's whitelist
-      :ns-blacklist    ; Optional, stacks with active config's blacklist
-      :fn              ; (fn [data]) -> side effects, with keys described below
+    {:min-level :debug #_[[\"taoensso.*\" :error] [\"*\" :debug]]
+     :ns-filter #{\"*\"} #_{:deny #{\"taoensso.*\"} :allow #{\"*\"}}
 
+     :middleware [] ; (fns [appender-data]) -> ?data, applied left->right
+
+     :timestamp-opts default-timestamp-opts ; {:pattern _ :locale _ :timezone _}
+     :output-fn      default-output-fn ; (fn [appender-data]) -> string
+
+     :appenders
+     #?(:clj
+        {:println (println-appender {:stream :auto})
+         ;; :spit (spit-appender    {:fname \"./timbre-spit.log\"})
+         }
+
+        :cljs
+        (if (exists? js/window)
+          {:console (console-appender {})}
+          {:println (println-appender {})}))}
+
+    See `*config*` for more info."
+
+  {:min-level :debug #_[["taoensso.*" :error] ["*" :debug]]
+   :ns-filter #{"*"} #_{:deny #{"taoensso.*"} :allow #{"*"}}
+
+   :middleware [] ; (fns [appender-data]) -> ?data, applied left->right
+
+   :timestamp-opts default-timestamp-opts ; {:pattern _ :locale _ :timezone _}
+   :output-fn      default-output-fn ; (fn [appender-data]) -> string
+
+   :appenders
+   #?(:clj
+      {:println (println-appender {:stream :auto})
+       ;; :spit (spit-appender    {:fname "./timbre-spit.log"})
+       }
+
+      :cljs
+      (if (exists? js/window)
+        {:console (console-appender {})}
+        {:println (println-appender {})}))})
+
+(comment
+  (set-config! default-config)
+  (infof "Hello %s" "world :-)"))
+
+(enc/defonce ^:dynamic *config*
+  "This map controls all Timbre behaviour including:
+    - When to log (via level and namespace filtering)
+    - How  to log (which appenders to use)
+    - What to log (output content configuration, etc.)
+
+  See `default-config` for default value (and example config).
+
+  Modify this config with `binding`, `alter-var-root`, or with utils:
+       `set-level!`,         `with-level`,
+      `set-config!`,        `with-config`,
+    `merge-config!`, `with-merged-config`.
+
+  MAIN OPTIONS
+
+    :min-level
+      Logging will occur only if a logging call's level is >= this
+      min-level. Possible values:
+
+        :trace  = level 0
+        :debug  = level 1 ; Default min-level
+        :info   = level 2
+        :warn   = level 3
+        :error  = level 4 ; Error type
+        :fatal  = level 5 ; Error type
+        :report = level 6 ; High non-error type
+
+      It's also possible to set the min-level based on the namespace
+      by providing a vector that maps `ns-pattern`s to min-levels, e.g.:
+      `[[\"taoensso.*\" :error] ... [\"*\" :debug]]`.
+
+    :ns-filter
+      Logging will occur only if a logging call's namespace is permitted
+      by this ns-filter. Possible values:
+
+        - Arbitrary (fn may-log-ns? [ns]) predicate fn.
+        - An `ns-pattern` like
+          #{}, \"*\", \"foo.bar\", \"foo.bar.*\", #{\"foo\" \"bar.*\"},
+          {:allow #{\"foo\" \"bar.*\"} :deny #{\"foo.*.bar.*\"}}.
+
+      Useful for turning off logging in noisy libraries, etc.
+
+    :middleware
+      Vector of simple (fn [appender-data]) -> ?new-data fns (applied left->right)
+      that transform the data map dispatched to appender fns. If any middleware
+      returns nil, NO dispatch will occur (i.e. the event will be filtered).
+
+    :timestamp-opts ; Config map, see `default-timestamp-opts`
+    :output-fn      ; (fn [appender-data]) -> string, see `default-output-fn`
+
+    :appenders ; {<appender-id> <appender-map>}
+
+      Where each appender-map has keys:
+        :enabled?        ; Must be truthy to log
+        :min-level       ; Optional *additional* appender-specific min-level
+        :ns-filter       ; Optional *additional* appender-specific ns-filter
+
+        :async?          ; Dispatch using agent? Useful for slow appenders (clj only)
+        :rate-limit      ; [[<ncalls-limit> <window-ms>] ...], or nil
+        :output-fn       ; Optional override for inherited (fn [appender-data]) -> string
+        :timestamp-opts  ; Optional override for inherited config map
+        :fn              ; (fn [appender-data]) -> side-effects, with keys described below
+
+  APPENDER DATA
     An appender's fn takes a single data map with keys:
-      :config          ; Entire config map (this map, etc.)
+      :config          ; Entire active config map
       :appender-id     ; Id of appender currently dispatching
       :appender        ; Entire map of appender currently dispatching
       :instant         ; Platform date (java.util.Date or js/Date)
-      :level           ; Keyword
+      :level           ; Call's level keyword (>= active min-level)
       :error-level?    ; Is level e/o #{:error :fatal}?
       :?ns-str         ; String,  or nil
       :?file           ; String,  or nil
@@ -99,71 +192,40 @@
       :hostname_       ; Forceable - string (clj only)
       :output-fn       ; (fn [data]) -> formatted output string
                        ; (see `default-output-fn` for details)
-      :context         ; *context* value at log time (see `with-context`)
+      :context         ; `*context*` value at log time (see `with-context`)
       :spying?         ; Is call occuring via the `spy` macro?
 
       **NB** - any keys not specifically documented here should be
       considered private / subject to change without notice.
 
-  MIDDLEWARE
-    Middleware are simple (fn [data]) -> ?data fns (applied left->right) that
-    transform the data map dispatched to appender fns. If any middleware
-    returns nil, NO dispatch will occur (i.e. the event will be filtered).
+  COMPILE-TIME LEVEL/NS ELISION
+    To control :min-level and :ns-filter at compile-time, use:
 
-  The `example-config` source code contains further settings and details.
-  See also `set-config!`, `merge-config!`, `set-level!`."
+      - `taoensso.timbre.min-level.edn`  JVM property (read as edn)
+      - `taoensso.timbre.ns-pattern.edn` JVM property (read as edn)
 
-  {:level :debug  ; e/o #{:trace :debug :info :warn :error :fatal :report}
+      - `TAOENSSO_TIMBRE_MIN_LEVEL_EDN`  env var      (read as edn)
+      - `TAOENSSO_TIMBRE_NS_PATTERN_EDN` env var      (read as edn)"
 
-   ;; TODO Consider switching to `:ns-pattern` to match Tufte?
-   ;; Control log filtering by namespaces/patterns. Useful for turning off
-   ;; logging in noisy libraries, etc.:
-   :ns-whitelist  [] #_["my-app.foo-ns"]
-   :ns-blacklist  [] #_["taoensso.*"]
-   :ns-log-level  [] #_[["taoensso.*" :info]]
+  default-config)
 
-   :middleware [] ; (fns [data]) -> ?data, applied left->right
+(defmacro with-config        [config & body] `(binding [*config*                            ~config ] ~@body))
+(defmacro with-merged-config [config & body] `(binding [*config* (enc/nested-merge *config* ~config)] ~@body))
 
-   :timestamp-opts
-   default-timestamp-opts ; {:pattern _ :locale _ :timezone _}
-
-   :output-fn default-output-fn ; (fn [data]) -> string
-
-   :appenders
-   #?(:clj
-      {:println (println-appender {:stream :auto})
-       ;; :spit (spit-appender {:fname "./timbre-spit.log"})
-       }
-
-      :cljs
-      (if (exists? js/window)
-        {:console (console-appender {})}
-        {:println (println-appender {})}))})
-
-(comment
-  (set-config! example-config)
-  (infof "Hello %s" "world :-)"))
-
-(enc/defonce ^:dynamic *config* "See `example-config` for info." example-config)
-(defmacro with-config        [config & body] `(binding [*config* ~config] ~@body))
-(defmacro with-merged-config [config & body]
-  `(binding [*config* (enc/nested-merge *config* ~config)] ~@body))
-
-(defn swap-config! [f & args]
+(declare swap-config!)
+(defn     set-config! [m] (swap-config! (fn [_old] m)))
+(defn   merge-config! [m] (swap-config! (fn [ old] (enc/nested-merge old m))))
+(defn    swap-config! [f & args]
   #?(:cljs (set!                   *config* (apply f *config* args))
      :clj  (apply alter-var-root #'*config* f args)))
 
-(defn   set-config! [m] (swap-config! (fn [_old] m)))
-(defn merge-config! [m] (swap-config! (fn [old] (enc/nested-merge old m))))
-
-(defn     set-level! [level] (swap-config! (fn [m] (assoc m :min-level level))))
-(defmacro with-level [level & body]
+(defn      set-level! [level] (swap-config! (fn [m] (assoc m :min-level level))))
+(defmacro with-level  [level & body]
   `(binding [*config* (assoc *config* :min-level ~level)] ~@body))
 
 (comment (set-level! :info) *config*)
 
 ;;;; Level filtering
-
 ;; Terminology note: we loosely distinguish between call/form and min levels,
 ;; though there's no motivation for a semantic (domain) difference between the
 ;; two as in Tufte.
@@ -191,7 +253,6 @@
 (comment (qb 1e6 (level>= :info :trace))) ; 89.77
 
 ;;;; Namespace filtering
-
 ;; Terminology note: we distinguish loosely between `ns-filter` (which may be a
 ;; fn or `ns-pattern`) and `ns-pattern` (subtype of `ns-filter`).
 
@@ -206,6 +267,7 @@
           (conform?* ns-filter ns)))]
 
   (defn- #?(:clj may-log-ns? :cljs ^boolean may-log-ns?)
+    "Implementation detail."
     [ns-filter ns] (if (conform? ns-filter ns) true false))
 
   (def ^:private ns->?min-level
@@ -228,13 +290,18 @@
 (let [valid-level    valid-level
       ns->?min-level ns->?min-level]
 
-  (defn- get-min-level [x ns] (valid-level (if (vector? x) (ns->?min-level x ns) x))))
+  (defn- get-min-level [default x ns]
+    (valid-level
+      (or
+        (if (vector? x) (ns->?min-level x ns) x)
+        default))))
 
 (comment
+  (get-min-level :report [["foo" :info]] *ns*)
   (let [ns *ns*]
     (enc/qb 1e6 ; [128.1 191.52]
-      (get-min-level :info     ns)
-      (get-min-level [["*" 0]] ns))))
+      (get-min-level :report :info     ns)
+      (get-min-level :report [["*" 0]] ns))))
 
 (let [;; Legacy API unfortunately treated empty colls as allow-all
       leglist (fn [x] (when x (if (#{[] #{}} x) nil x)))]
@@ -252,17 +319,18 @@
       legacy-ns-filter legacy-ns-filter]
 
   (defn #?(:clj may-log? :cljs ^:boolean may-log?)
-    "Returns true iff level and ns are runtime unfiltered."
-    ([level                ] (may-log? level nil     nil))
-    ([level ?ns-str        ] (may-log? level ?ns-str nil))
-    ([level ?ns-str ?config]
-     (let [config (or ?config *config*)
+    "Implementation detail.
+    Returns true iff level and ns are runtime unfiltered."
+    ([                  level                ] (may-log? :report level nil     nil))
+    ([                  level ?ns-str        ] (may-log? :report level ?ns-str nil))
+    ([                  level ?ns-str ?config] (may-log? :report level ?ns-str nil))
+    ([default-min-level level ?ns-str ?config]
+     (let [config (or ?config *config*) ; NB may also be appender map
            min-level
-           (get-min-level
+           (get-min-level default-min-level
              (or
                (get config :min-level)
                (get config :level) ; Legacy
-               :report             ; Legacy
                )
              ?ns-str)]
 
@@ -286,7 +354,7 @@
    (def ^:private compile-time-min-level
      (when-let [level
                 (or
-                  (enc/read-sys-val "taoensso.timbre.min-level" "TAOENSSO_TIMBRE_MIN_LEVEL")
+                  (enc/read-sys-val "taoensso.timbre.min-level.edn" "TAOENSSO_TIMBRE_MIN_LEVEL_EDN")
                   (enc/read-sys-val "TIMBRE_LEVEL")     ; Legacy
                   (enc/read-sys-val "TIMBRE_LOG_LEVEL") ; Legacy
                   )]
@@ -300,7 +368,7 @@
    (def ^:private compile-time-ns-filter
      (let [ns-pattern
            (or
-             (enc/read-sys-val "taoensso.timbre.ns-pattern" "TAOENSSO_TIMBRE_NS_PATTERN")
+             (enc/read-sys-val "taoensso.timbre.ns-pattern.edn" "TAOENSSO_TIMBRE_NS_PATTERN_EDN")
              (enc/read-sys-val "TIMBRE_NS_PATTERN") ; Legacy
              (legacy-ns-filter ; Legacy
                (enc/read-sys-val "TIMBRE_NS_WHITELIST")
@@ -333,20 +401,16 @@
 
 ;;;; Utils
 
-(declare get-hostname)
-
-(enc/compile-if (do enc/str-join true) ; Encore v2.29.1+ with transducers
-  (defn- str-join [xs]
-    (enc/str-join " "
-      (map
-        (fn [x]
-          (let [x (enc/nil->str x)] ; Undefined, nil -> "nil"
-            (cond
-              (record?          x) (pr-str x)
-              ;; (enc/lazy-seq? x) (pr-str x) ; Dubious?
-              :else x))))
-      xs))
-  (defn- str-join [xs] (str/join " " #?(:clj xs :cljs (filter identity xs)))))
+(defn- str-join [xs]
+  (enc/str-join " "
+    (map
+      (fn [x]
+        (let [x (enc/nil->str x)] ; Undefined, nil -> "nil"
+          (cond
+            (record?          x) (pr-str x)
+            ;; (enc/lazy-seq? x) (pr-str x) ; Dubious?
+            :else x))))
+    xs))
 
 (comment
   (defrecord MyRec [x])
@@ -354,12 +418,12 @@
 
 #?(:clj
    (enc/defonce ^:private get-agent
-     (enc/memoize_ (fn [appender-id] (agent nil :error-mode :continue)))))
+     (enc/fmemoize (fn [appender-id] (agent nil :error-mode :continue)))))
 
 (comment (get-agent :my-appender))
 
 (defonce ^:private get-rate-limiter
-  (enc/memoize_ (fn [appender-id specs] (enc/limiter specs))))
+  (enc/fmemoize (fn [appender-id specs] (enc/limiter specs))))
 
 (comment (def rf (get-rate-limiter :my-appender [[10 5000]])))
 
@@ -376,7 +440,6 @@
 
   [context & body] `(binding [*context* ~context] ~@body))
 
-(defn- vrest [v] (if (> (count v) 1) (subvec v 1) []))
 (defn- parse-vargs
   "vargs -> [?err ?meta ?msg-fmt api-vargs]"
   [?err msg-type vargs]
@@ -387,18 +450,18 @@
     (if (and auto-error? (enc/error? v0))
       (let [?err     v0
             ?meta    nil
-            vargs    (vrest vargs)
+            vargs    (enc/vrest vargs)
             ?msg-fmt (if fmt-msg? (let [[v0] vargs] v0) nil)
-            vargs    (if fmt-msg? (vrest vargs) vargs)]
+            vargs    (if fmt-msg? (enc/vrest vargs) vargs)]
 
         [?err ?meta ?msg-fmt vargs])
 
       (let [?meta    (if (and (map? v0) (:meta (meta v0))) v0 nil)
             ?err     (or (:err ?meta) (if auto-error? nil ?err))
             ?meta    (dissoc ?meta :err)
-            vargs    (if ?meta (vrest vargs) vargs)
+            vargs    (if ?meta    (enc/vrest vargs) vargs)
             ?msg-fmt (if fmt-msg? (let [[v0] vargs] v0) nil)
-            vargs    (if fmt-msg? (vrest vargs) vargs)]
+            vargs    (if fmt-msg? (enc/vrest vargs) vargs)]
 
         [?err ?meta ?msg-fmt vargs]))))
 
@@ -416,6 +479,8 @@
   (infof ^:meta {:hash :bar}             "Hi %s" "steve")
   (infof ^:meta {:err (Exception. "ex")} "Hi %s" "steve"))
 
+(declare get-hostname)
+
 (defn -log! "Core low-level log fn. Implementation detail!"
 
   ;; Backward-compatible arities for convenience of AOT tools, Ref.
@@ -423,8 +488,8 @@
   ([config level ?ns-str ?file ?line msg-type ?err vargs_ ?base-data            ] (-log! config level ?ns-str ?file ?line msg-type ?err vargs_ ?base-data nil         false))
   ([config level ?ns-str ?file ?line msg-type ?err vargs_ ?base-data callsite-id] (-log! config level ?ns-str ?file ?line msg-type ?err vargs_ ?base-data callsite-id false))
   ([config level ?ns-str ?file ?line msg-type ?err vargs_ ?base-data callsite-id spying?]
-   (when (may-log? level ?ns-str config)
-     (let [instant (enc/now-dt)
+   (when (may-log? :report level ?ns-str config)
+     (let [instant (enc/now-dt*)
            context *context*
            vargs   @vargs_
 
@@ -437,7 +502,7 @@
              {:instant instant
               :level   level
               :context context
-              :config  config ; Entire config!
+              :config  config  ; Entire config!
               :?ns-str ?ns-str
               :?file   ?file
               :?line   ?line
@@ -495,10 +560,10 @@
 
                ;; Optimization: try maximize output+timestamp sharing
                ;; between appenders
-               output-fn1 (enc/memoize_ (get config :output-fn default-output-fn))
+               output-fn1 (enc/fmemoize (get config :output-fn default-output-fn))
                timestamp-opts1 (conj default-timestamp-opts (get config :timestamp-opts))
                get-timestamp_ ; (fn [timestamp-opts]) -> Shared delay
-               (enc/memoize_
+               (enc/fmemoize
                  (fn [opts]
                    (delay
                      (let [{:keys [pattern locale timezone]} opts]
@@ -515,67 +580,61 @@
 
            (reduce-kv
              (fn [_ id appender]
-               (when (and (:enabled? appender)
-                       (level>= level (or (:min-level appender) :trace)))
+               (when (and (:enabled? appender) (may-log? :trace level ?ns-str appender))
 
-                 ;; Appender ns filter stacks with main config's ns filter:
-                 (when (ns-filter (:ns-whitelist appender)
-                         (:ns-blacklist appender)
-                         ?ns-str)
+                 (let [rate-limit-specs (:rate-limit appender)
+                       rate-limit-okay?
+                       (or
+                         (empty? rate-limit-specs)
+                         (let [rl-fn (get-rate-limiter id rate-limit-specs)]
+                           (not (rl-fn (force (:hash_ data))))))]
 
-                   (let [rate-limit-specs (:rate-limit appender)
-                         rate-limit-okay?
-                         (or
-                           (empty? rate-limit-specs)
-                           (let [rl-fn (get-rate-limiter id rate-limit-specs)]
-                             (not (rl-fn (force (:hash_ data))))))]
+                   (when rate-limit-okay?
+                     (let [{:keys [async?] apfn :fn} appender
 
-                     (when rate-limit-okay?
-                       (let [{:keys [async?] apfn :fn} appender
+                           output-fn
+                           (let [f (:output-fn appender)]
+                             (if (or (nil? f) (enc/kw-identical? f :inherit))
+                               output-fn1
+                               f))
 
-                             output-fn
-                             (let [f (:output-fn appender)]
-                               (if (or (nil? f) (enc/kw-identical? f :inherit))
-                                 output-fn1
-                                 f))
+                           timestamp_
+                           (let [opts (:timestamp-opts appender)]
+                             (if (or (nil? opts) (enc/kw-identical? opts :inherit))
+                               (get-timestamp_       timestamp-opts1)
+                               (get-timestamp_ (conj timestamp-opts1 opts))))
 
-                             timestamp_
-                             (let [opts (:timestamp-opts appender)]
-                               (if (or (nil? opts) (enc/kw-identical? opts :inherit))
-                                 (get-timestamp_       timestamp-opts1)
-                                 (get-timestamp_ (conj timestamp-opts1 opts))))
+                           output_
+                           (delay
+                             (output-fn (assoc data :timestamp_ timestamp_)))
 
-                             output_
-                             (delay
-                               (output-fn (assoc data :timestamp_ timestamp_)))
+                           data
+                           (conj data
+                             {:appender-id id
+                              :appender    appender
+                              :output-fn   output-fn
+                              :output_     output_
+                              :timestamp_  timestamp_})
 
-                             data
-                             (conj data
-                               {:appender-id id
-                                :appender    appender
-                                :output-fn   output-fn
-                                :output_     output_
-                                :timestamp_  timestamp_})
+                           ?data ; Final data prep before going to appender
+                           (if-let [mfn (:middleware-fn appender)]
+                             (mfn data) ; Deprecated, undocumented
+                             data)]
 
-                             ?data ; Final data prep before going to appender
-                             (if-let [mfn (:middleware-fn appender)]
-                               (mfn data) ; Deprecated, undocumented
-                               data)]
+                       (when-let [data ?data] ; Not filtered by middleware
 
-                         (when-let [data ?data] ; Not filtered by middleware
+                         ;; NB Unless `async?`, we currently allow appenders
+                         ;; to throw since it's not particularly obvious
+                         ;; how/where we should report problems. Throwing
+                         ;; early seems preferable to just silently dropping
+                         ;; errors. In effect, we currently require appenders
+                         ;;  to take responsibility over appropriate trapping.
 
-                           ;; NB Unless `async?`, we currently allow appenders
-                           ;; to throw since it's not particularly obvious
-                           ;; how/where we should report problems. Throwing
-                           ;; early seems preferable to just silently dropping
-                           ;; errors. In effect, we currently require appenders
-                           ;;  to take responsibility over appropriate trapping.
-
-                           #?(:cljs (apfn data)
-                              :clj
-                              (if async?
-                                (send-off (get-agent id) (fn [_] (apfn data)))
-                                (apfn data))))))))))
+                         #?(:cljs (apfn data)
+                            :clj
+                            (if async?
+                              (send-off (get-agent id) (fn [_] (apfn data)))
+                              (apfn data)))))))))
              nil
              (:appenders config))))))
    nil))
@@ -620,7 +679,7 @@
            (delay [~@args]) ~?base-data ~callsite-id ~spying?)))))
 
 (comment
-  (log! :info :p ["foo"])
+  (do           (log! :info :p ["foo"]))
   (macroexpand '(log! :info :p ["foo"]))
   (macroexpand '(log! :info :p ["foo"] {:?line 42})))
 
@@ -630,7 +689,7 @@
   (set-level! :debug)
   (may-log? :trace)
   (with-level :trace (log? :trace))
-  (qb 10000
+  (qb 1e4
     (may-log? :trace)
     (may-log? :trace "foo")
     (tracef "foo")
@@ -641,10 +700,10 @@
     `(with-config (assoc *config* :appenders {:appender ~appender}) ~@body))
 
   (with-sole-appender {:enabled? true :fn (fn [data] nil)}
-    (qb 10000 (info "foo"))) ; ~74.58 ; Time to delays ready
+    (qb 1e4 (info "foo"))) ; ~74.58 ; Time to delays ready
 
   (with-sole-appender {:enabled? true :fn (fn [data] (force (:output_ data)))}
-    (qb 10000 (info "foo"))) ; ~136.68 ; Time to output ready
+    (qb 1e4 (info "foo"))) ; ~136.68 ; Time to output ready
   )
 
 ;;;; Main public API-level stuff
@@ -802,8 +861,10 @@
 
 #?(:clj
    (def ^:private default-stacktrace-fonts
-     (or (enc/read-sys-val "TIMBRE_DEFAULT_STACKTRACE_FONTS")
-         nil)))
+     (or
+       (enc/read-sys-val "taoensso.timbre.default-stacktrace-fonts.edn" "TAOENSSO_TIMBRE_DEFAULT_STACKTRACE_FONTS_EDN")
+       (enc/read-sys-val "TIMBRE_DEFAULT_STACKTRACE_FONTS") ; Legacy
+       nil)))
 
 (defn stacktrace
   ([err     ] (stacktrace err nil))
@@ -836,6 +897,7 @@
   #?(:cljs (def console-?appender core-appenders/console-appender))
   (def ordered-levels [:trace :debug :info :warn :error :fatal :report])
   (def log? may-log?)
+  (def example-config "DEPRECATED, prefer `default-config`" default-config)
   (defn logging-enabled? [level compile-time-ns] (may-log? level (str compile-time-ns)))
   (defn str-println      [& xs] (str-join xs))
   (defmacro with-log-level      [level  & body] `(with-level  ~level  ~@body))
