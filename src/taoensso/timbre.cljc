@@ -283,7 +283,8 @@
 (comment
   (enc/qb 1e6 ; [145.78 275.69]
     (may-log-ns? "*" "taoensso.timbre")
-    (ns->?min-level [[#{"taoensso.*" "foo.bar"} :info] ["*" :debug]] "foo.bar")))
+    (ns->?min-level [[#{"taoensso.*" "foo.bar"} :info] ["*" :debug]] "foo.bar")
+    (ns->?min-level [["ns.1" :info] ["ns.2" :debug]] "ns.2")))
 
 ;;;; Combo filtering
 
