@@ -30,7 +30,7 @@
      :?line    ?line
      :msg      (force msg_)}))
 
-(defn- log-message [collection entry-fn data]
+(defn- log-message [config collection entry-fn data]
   (let [entry (entry-fn data)]
     (mongo/with-mongo (ensure-conn config)
       (mongo/insert! collection entry))))
@@ -51,4 +51,4 @@
      :min-level  :warn
      :rate-limit [[1 1000]] ; 1/sec
      :output-fn  :inherit
-     :fn (fn [data] (log-message collection entry-fn data))}))
+     :fn (fn [data] (log-message config collection entry-fn data))}))

@@ -42,9 +42,12 @@
      [com.mchange/c3p0        "0.9.5.5"]
      [cheshire                "5.10.0"]
      [ymilky/franzy           "0.0.1"]
-     [com.newrelic.agent.java/newrelic-agent "6.0.0"]
+     [com.newrelic.agent.java/newrelic-agent "3.30.0"]
      [net.java.dev.jna/jna    "5.6.0"]
-     [raven-clj               "1.6.0"]]}
+     [raven-clj               "1.6.0"]
+     [congomongo              "2.2.1"]
+     [server-socket           "1.0.0"]
+     [org.zeromq/cljzmq       "0.1.4"]]}
 
    :test
    {:dependencies

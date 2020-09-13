@@ -2,6 +2,7 @@
   "Appender that sends GELF messages to a centralized logging server
   (e.g. Graylog). Requires https://github.com/Graylog2/gelfclient."
   {:author "Dave Owens (@davewo)"}
+  (:require [taoensso.timbre :as timbre])
   (:import
    [org.graylog2.gelfclient
     GelfConfiguration
