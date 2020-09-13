@@ -4,8 +4,8 @@
 **[CHANGELOG]** | [API] | current [Break Version]:
 
 ```clojure
-[com.taoensso/timbre "4.10.0"]        ; Stable, please check CHANGELOG for details
-[com.taoensso/timbre "4.11.0-alpha2"] ; Dev, please see commits for details
+[com.taoensso/timbre "4.10.0"]    ; Stable
+[com.taoensso/timbre "5.0.0-RC1"] ; Dev, please see CHANGELOG for details
 ```
 
 > See [here](https://taoensso.com/clojure/backers) if you're interested in helping support my open-source work, thanks! - Peter Taoussanis
@@ -14,7 +14,7 @@
 
 ## A pure Clojure/Script logging library
 
-Java logging is a Kafkaesque mess of complexity that buys you _nothing_. It can be comically hard to get even the simplest logging working, and it just gets worse at scale.
+Java logging is a Kafkaesque mess of complexity that buys you little. It can be comically hard to get even the simplest logging working, and it just gets worse at scale.
 
 Timbre offers an **all Clojure/Script** alternative that's fast, deeply flexible, easy to configure, and that **works out the box**.  No XML.
 

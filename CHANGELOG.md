@@ -1,5 +1,50 @@
 > This project uses [Break Versioning](https://github.com/ptaoussanis/encore/blob/master/BREAK-VERSIONING.md) as of **Aug 16, 2014**.
 
+## v5.0.0-RC1 / 2020 Sep 14
+
+```clojure
+[com.taoensso/timbre "5.0.0-RC1"]
+```
+
+> This is a **major feature release**. It should be non-breaking for most users, but **please test**!  
+> See [here](https://github.com/ptaoussanis/encore#recommended-steps-after-any-significant-dependency-update) for recommended steps when updating any Clojure/Script dependencies.
+
+### Changes since `v4.10.0`
+
+- **[BREAKING]** Bump minimum Clojure `1.5`->`1.7`
+- **[BREAKING]** [#155] Change default timestamp pattern from `yy-MM-dd HH:mm:ss` to `ISO8601`
+- **[Deprecated]** `:ns-whitelist` and `:ns-blacklist` options are being replaced with a single `:ns-filter` option. See [docstring](http://ptaoussanis.github.io/timbre/taoensso.timbre.html#var-default-config) for details. 
+- **[Deprecated]** `:level` config option is being renamed `:min-level`
+- [#289] [3rd-party appenders] Logstash appender: now async by default
+- [#290] [3rd-party appenders] Logstash appender: don't use ANSI colors in stacktraces (@antonmos)
+- [#288] [Implementation] Switch from `.cljx` to `.cljc` (@anthonygalea)
+
+### New since `v4.10.0`
+
+- [#255] In additional to the usual values like `:trace`, `:warn`, etc. - min levels may now also be of form `[[<ns-pattern> <min-level>] ...]` (both in global and per-appender config). See [docstring](http://ptaoussanis.github.io/timbre/taoensso.timbre.html#var-default-config) for details (@mikekap, @ptaoussanis).
+- [#73 #301] [3rd-party appenders] Add Syslog appender (@audriu)
+- [#270] [3rd-party appenders] Add UDP appender (@inaimathi)
+- [#266 #239] Add support for timestamps in Cljs (@thatismatt)
+- [#271] Appender data now incl. `:spying?` key
+- [#265] Officially document `^:meta` feature (was previously experimental)
+  - Enables ^:meta {:raw-console? true} ClojureScript console appender option
+- New JVM properties and env variables to control compile-time elision, see [docstring](http://ptaoussanis.github.io/timbre/taoensso.timbre.html#var-*config*) for details
+- Improved config documentation
+
+### Fixes since `v4.10.0`
+
+- [#296 #295] Fix Nodejs stacktraces (@nenadalm)
+- [#250] Mod default cljs appenders under Nodejs (@sundbp)
+- [#251 #292] `spit-appender`: add locking for thread safety
+- [#257] Println appender hotfix: use `:error-level?` instead of `:error?` (@rinx)
+- [#303] Make `get-hostname` more robust to exceptions
+- [#292] Always honour system newline
+- Carmine appender: stop using deprecated Nippy API
+- [#285 #282] [3rd-party appenders] Fix some bugs (@borkdude)
+- [#233] [3rd-party appenders] Gelf: ensure `short_message` is not empty + add extra fields (@vise890)
+- [#246] [3rd-party appenders] Newrelic: fix ns typo (@jafingerhut)
+
+
 ## v4.10.0 / 2017 Apr 14
 
 ```clojure
