@@ -136,7 +136,7 @@
 
       It's also possible to set the min-level based on the namespace
       by providing a vector that maps `ns-pattern`s to min-levels, e.g.:
-      `[[#{\"taoensso.*\"} :error] ... [{\"*\"} :debug]]`.
+      `[[#{\"taoensso.*\"} :error] ... [#{\"*\"} :debug]]`.
 
       Example `ns-pattern`s:
         #{}, \"*\", \"foo.bar\", \"foo.bar.*\", #{\"foo\" \"bar.*\"},
